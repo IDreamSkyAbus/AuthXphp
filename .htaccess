@@ -1,0 +1,17 @@
+# AuthXphp URL 重写
+# 把所有非真实文件/目录的请求转给 index.php 处理
+RewriteEngine On
+
+# 默认入口文件
+DirectoryIndex index.php
+
+# 安全：禁止访问 .ht / .env / 敏感目录
+RewriteRule ^(?:.ht|composer\.(?:json|lock)|vendor/(?:.*/)?(?:tests|docs)) - [F,L]
+
+# 允许直接访问真实文件和目录
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# 其它全部走 index.php
+RewriteRule ^ index.php [QSA,L]

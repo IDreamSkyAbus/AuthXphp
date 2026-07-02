@@ -1,0 +1,21 @@
+# AuthXphp Nginx 配置参考
+# 复制到你的 server {} 块或 include 到现有配置中
+# 注意：/authxphp/ 请替换为你的实际部署子目录
+
+# location /authxphp/ {
+#     alias /path/to/AuthXphp/;
+#     index index.php;
+#     try_files $uri $uri/ /authxphp/index.php?$query_string;
+#
+#     location ~ \.php$ {
+#         fastcgi_pass unix:/run/php/php-fpm.sock;   # 按实际修改
+#         fastcgi_index index.php;
+#         include fastcgi_params;
+#         fastcgi_param SCRIPT_FILENAME $request_filename;
+#         fastcgi_param PATH_INFO $fastcgi_path_info;
+#     }
+#
+#     # 禁止访问敏感文件
+#     location ~ /\.(ht|git|env) { deny all; }
+#     location ~ composer\.(json|lock) { deny all; }
+# }

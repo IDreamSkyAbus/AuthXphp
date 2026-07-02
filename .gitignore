@@ -1,0 +1,35 @@
+# 安装锁（生成后请勿删除）
+# 删除后可重新访问 /install/
+# install/install.lock
+
+# 运行时数据
+storage/
+!storage/.gitkeep
+
+# 第三方依赖
+vendor/
+composer.lock
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.trae/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# 安全：敏感配置文件（包含密钥、数据库密码、Guard 字段映射）
+# 仓库中应仅保留模板，安装时由 install/finish.php 重新生成
+# ============================================================================
+config/jwt.php
+config/database.php
+config/guards.php
+config/app.php
+
+# 如果仓库没有提供模板，可使用 .example 占位
+!config/*.example

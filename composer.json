@@ -1,0 +1,15 @@
+{
+    "name": "authxphp/authxphp",
+    "description": "AuthXphp - Configuration-driven, stateless, embeddable PHP Auth micro-framework",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.4",
+        "firebase/php-jwt": "^6.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "AuthXphp\\": "src/"
+        }
+    }
+}
