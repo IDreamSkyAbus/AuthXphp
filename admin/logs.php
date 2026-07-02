@@ -6,6 +6,11 @@ require __DIR__ . '/_bootstrap.php';
 $msg = $_GET['msg'] ?? null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'clear') {
+    // BUG #5 CSRF 校验
+    if (!csrfVerify($_POST['_csrf'] ?? '')) {
+        header('Location: ' . adminUrl('logs.php', ['msg' => 'csrf']));
+        exit;
+    }
     if (Db::tableExists('auth_logs')) {
         Db::table('auth_logs')->delete();
     }
@@ -27,12 +32,16 @@ adminRenderHeader('审计日志', 'logs');
 ?>
 <?php if ($msg === 'cleared'): ?>
   <div class="layui-alert layui-alert-success">已清空</div>
+<?php elseif ($msg === 'csrf'): ?>
+  <div class="layui-alert layui-alert-danger">CSRF 验证失败，请刷新页面后重试</div>
 <?php endif; ?>
 
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
   <div>共 <strong><?= (int)$total ?></strong> 条记录</div>
   <form method="post" onsubmit="return confirm('确定清空所有日志？')">
     <input type="hidden" name="action" value="clear">
+    <!-- BUG #5 CSRF 隐藏字段 -->
+    <input type="hidden" name="_csrf" value="<?= h(csrfToken()) ?>">
     <button class="layui-btn layui-btn-sm layui-btn-danger" type="submit">清空日志</button>
   </form>
 </div>

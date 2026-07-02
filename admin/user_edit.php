@@ -19,6 +19,10 @@ if (!$row) {
 }
 $err = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // BUG #5 CSRF 校验
+    if (!csrfVerify($_POST['_csrf'] ?? '')) {
+        $err = 'CSRF 验证失败，请刷新页面后重试';
+    } else {
     try {
         $data = [];
 
@@ -64,12 +68,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // status 字段（整数 0/1）
         $data['status'] = isset($_POST['status']) ? ((int)$_POST['status'] === 1 ? 1 : 0) : 1;
 
-        // 确保只更新 Guard 配置中 extra_fields 允许的字段
-        $allowedFields = $g->config('extra_fields') ?? [];
-        $allowedFields[] = $g->config('status_field') ?? 'status'; // status 始终允许
-        $allowedFields[] = $g->config('password_field'); // 密码字段单独处理
-        // 去重
-        $allowedFields = array_unique($allowedFields);
+        // BUG #24 修复：构造白名单时强制合并系统关键字段
+        // 即使 extra_fields / status_field / password_field 配置异常，
+        // 这些字段也必须始终可写，否则会造成用户状态被静默丢弃。
+        $extraFields   = $g->config('extra_fields') ?? [];
+        $statusField   = $g->config('status_field') ?: 'status';
+        $passwordField = $g->config('password_field') ?: 'password';
+        $primaryKey    = $g->config('primary_key') ?: 'id';
+
+        $allowedFields = array_merge(
+            (array)$extraFields,
+            [$statusField, $passwordField, $primaryKey, 'updated_at']
+        );
+        $allowedFields = array_values(array_unique(array_filter($allowedFields, function ($f) {
+            return is_string($f) && $f !== '';
+        })));
         $data = array_intersect_key($data, array_flip($allowedFields));
 
         $g->update($id, $data);
@@ -77,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     } catch (Throwable $e) {
         $err = $e->getMessage();
+    }
     }
 }
 adminRenderHeader('编辑用户 #' . $id, 'users');
@@ -110,5 +124,7 @@ adminRenderHeader('编辑用户 #' . $id, 'users');
       <a class="layui-btn layui-btn-primary" href="<?= h(adminUrl('users.php', ['guard' => $curGuard])) ?>">返回</a>
     </div>
   </div>
+  <!-- BUG #5 CSRF 隐藏字段 -->
+  <input type="hidden" name="_csrf" value="<?= h(csrfToken()) ?>">
 </form>
 <?php adminRenderFooter(); ?>

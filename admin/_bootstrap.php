@@ -38,6 +38,10 @@ if (!in_array($cur, $publicPages, true)) {
         header('Location: ' . ($base ?: '') . '/admin/login.php');
         exit;
     }
+    // BUG #14 refresh token 续期：若首次验证出 TokenExpiredException，
+    // 尝试用 session 中的 refresh token 换取新 access token，再走正常验证。
+    $refreshTried = false;
+    auth_check:
     try {
         $r = Jwt::verify($adminToken, config('app.admin_guard') ?: 'admin');
         $data = $r['data'];
@@ -47,8 +51,32 @@ if (!in_array($cur, $publicPages, true)) {
             throw new RuntimeException('用户不存在');
         }
         Auth::setCurrent($user, $data['guard'], $r['jti'], $r['payload']);
+    } catch (TokenExpiredException $e) {
+        if (!$refreshTried) {
+            $refreshToken = $_SESSION['authxphp_admin_refresh_token'] ?? '';
+            if ($refreshToken !== '') {
+                try {
+                    $refreshed = Jwt::refresh($refreshToken);
+                    // Jwt::refresh() 返回结构: token, refresh_token, expires_in, token_type, user
+                    if (!empty($refreshed['token']) && !empty($refreshed['user']['guard'])) {
+                        $_SESSION['authxphp_admin_token']         = $refreshed['token'];
+                        $_SESSION['authxphp_admin_refresh_token'] = $refreshed['refresh_token'] ?? $refreshToken;
+                        $_SESSION['authxphp_admin_token_iat']     = time();
+                        $adminToken = $refreshed['token'];
+                        $refreshTried = true;
+                        goto auth_check;
+                    }
+                } catch (Throwable $re) {
+                    Log::warning('Admin refresh token 失败', ['error' => $re->getMessage()]);
+                }
+            }
+        }
+        unset($_SESSION['authxphp_admin_token'], $_SESSION['authxphp_admin_refresh_token']);
+        $base = rtrim(config('app.base_path') ?: '', '/');
+        header('Location: ' . ($base ?: '') . '/admin/login.php?msg=expired');
+        exit;
     } catch (Throwable $e) {
-        unset($_SESSION['authxphp_admin_token']);
+        unset($_SESSION['authxphp_admin_token'], $_SESSION['authxphp_admin_refresh_token']);
         $base = rtrim(config('app.base_path') ?: '', '/');
         header('Location: ' . ($base ?: '') . '/admin/login.php?msg=expired');
         exit;
@@ -212,4 +240,49 @@ function csrfVerify(string $token): bool {
  */
 function csrfField(): string {
     return '<input type="hidden" name="_csrf" value="' . h(csrfToken()) . '">';
+}
+
+/**
+ * 脱敏显示数据库主机（IP 仅保留前 3 段，域名仅保留首段+末段）
+ * 例：192.168.1.10 → 192.168.1.***
+ *     db.example.com → db.***.com
+ */
+function maskHost(string $host): string {
+    if ($host === '') {
+        return '未配置';
+    }
+    // IPv4
+    if (preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/', $host)) {
+        return preg_replace('/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/', '$1.***', $host);
+    }
+    // 域名（多段）
+    if (substr_count($host, '.') >= 2) {
+        $parts = explode('.', $host);
+        $last  = array_pop($parts);
+        $first = array_shift($parts);
+        return $first . '.***.' . $last;
+    }
+    // 单段或不规则：仅保留首尾字符
+    $len = strlen($host);
+    if ($len <= 2) {
+        return str_repeat('*', $len);
+    }
+    return $host[0] . str_repeat('*', $len - 2) . $host[$len - 1];
+}
+
+/**
+ * 脱敏显示数据库名（首尾各保留 1 字符，中间 ***）
+ * 例：authxphp → a******h
+ *     ab       → **
+ *     a        → *
+ */
+function maskDbName(string $name): string {
+    if ($name === '') {
+        return '未配置';
+    }
+    $len = strlen($name);
+    if ($len <= 2) {
+        return str_repeat('*', $len);
+    }
+    return $name[0] . str_repeat('*', $len - 2) . $name[$len - 1];
 }
