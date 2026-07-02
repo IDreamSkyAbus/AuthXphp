@@ -33,7 +33,7 @@ adminRenderHeader('系统设置', 'settings');
           <tr><th>Access TTL</th><td><?= (int)config('jwt.access_ttl') ?> 秒</td></tr>
           <tr><th>Refresh TTL</th><td><?= (int)config('jwt.refresh_ttl') ?> 秒</td></tr>
           <tr><th>Issuer</th><td><?= h(config('jwt.issuer')) ?></td></tr>
-          <tr><th>Secret</th><td><code>*** 已隐藏 ***（共 <?= strlen(config('jwt.secret')) ?> 字符）</code></td></tr>
+          <tr><th>Secret</th><td><code>*** 已隐藏 ***（为避免通过长度差异推断密钥内容，详情请查阅服务器 config/jwt.php）</code></td></tr>
         </tbody>
       </table>
     </div>
