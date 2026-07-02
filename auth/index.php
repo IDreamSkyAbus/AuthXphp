@@ -316,9 +316,11 @@ class Auth
 
     public static function changePassword(string $old, string $new): bool
     {
+        // BUG #10 修复：统一通过 return false 表达失败，避免在某些路径上 exit
+        // （Response::unauthorized() 内部会 exit）导致调用方无法预测行为。
         if (!self::check()) {
             Log::warning('未登录用户尝试修改密码');
-            Response::unauthorized();
+            return false;
         }
         $guard = self::guard();
         $cfg   = config('guards.guards.' . $guard);
