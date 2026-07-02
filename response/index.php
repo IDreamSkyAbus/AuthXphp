@@ -31,7 +31,6 @@ class Response
         if (!headers_sent()) {
             http_response_code($httpStatus);
             header('Content-Type: application/json; charset=utf-8');
-            header('X-AuthXphp-Version: ' . (config('app.version') ?? '1.0.0'));
         }
         $payload = [
             'code'       => $code,
@@ -52,11 +51,13 @@ class Response
         self::json(0, $msg, $data, 200);
     }
 
-    public static function fail(int $code, string $msg, $data = null): void
+    public static function fail(int $code, string $msg, $data = null, ?int $httpStatus = null): void
     {
-        $httpStatus = config('response.http_status.' . $code, 400);
-        if (is_int($code) && $code >= 50000) {
-            $httpStatus = 500;
+        if ($httpStatus === null) {
+            $httpStatus = config('response.http_status.' . $code, 400);
+            if (is_int($code) && $code >= 50000) {
+                $httpStatus = 500;
+            }
         }
         self::json($code, $msg, $data, $httpStatus);
     }
