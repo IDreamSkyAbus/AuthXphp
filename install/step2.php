@@ -37,6 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = '主机名格式不正确';
     } elseif (!preg_match('/^[a-zA-Z0-9_]{1,64}$/', $cfg['username'])) {
         $err = '用户名只能包含字母、数字和下划线';
+    } elseif (!preg_match('/^[a-zA-Z0-9_]{1,16}$/', $cfg['charset'])) {
+        // 防御性：虽然当前 charset 在上方硬编码为 utf8mb4 不接受用户输入，
+        // 但此处显式白名单校验可避免未来重构时被误改后导致 SQL 拼接注入。
+        $err = '字符集格式不正确';
     } else {
         try {
             $dsn = sprintf('mysql:host=%s;port=%d;charset=%s', $cfg['host'], $cfg['port'], $cfg['charset']);
