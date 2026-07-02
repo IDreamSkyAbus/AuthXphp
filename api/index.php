@@ -119,8 +119,18 @@ Route::group('/api', function () {
         if ($old === '' || $new === '') {
             Response::badRequest('原密码和新密码不能为空', 40001);
         }
-        if (strlen($new) < 6) {
-            Response::badRequest('新密码至少 6 位', 40002);
+        // BUG #9 修复：密码最小长度 6 → 8，并增加复杂度校验（与安装向导 step5 保持一致）。
+        if (strlen($new) < 8) {
+            Response::badRequest('新密码至少 8 位', 40002);
+        }
+        $hasUpper = (int)preg_match('/[A-Z]/', $new);
+        $hasLower = (int)preg_match('/[a-z]/', $new);
+        $hasDigit = (int)preg_match('/\d/', $new);
+        if ($hasUpper + $hasLower + $hasDigit < 2) {
+            Response::badRequest('新密码需至少包含大写字母、小写字母、数字中的两类', 40002);
+        }
+        if (preg_match('/^(.)\1+$/', $new)) {
+            Response::badRequest('新密码不能全部为相同字符', 40002);
         }
         if (!Auth::changePassword($old, $new)) {
             Response::fail(42302, '原密码错误');

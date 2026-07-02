@@ -110,6 +110,11 @@ class Guard
 
         // 状态校验
         if ($statusField && isset($row[$statusField]) && (int)$row[$statusField] === 0) {
+            // BUG #7 修复：账号被禁用时触发事件，便于审计日志区分"密码错误"与"账号禁用"。
+            Hook::trigger(Hook::EVENT_GUARD_ATTEMPT_DISABLED, [
+                'guard'  => $this->name,
+                'account'=> $account,
+            ]);
             return null; // 视为账号不存在，避免泄露存在性
         }
 
@@ -165,24 +170,62 @@ class Guard
 
     /**
      * 创建用户（注册用）
+     *
+     * BUG #2 修复：仅允许 Guard 配置白名单内的字段入库，防止攻击者通过
+     * /api/register 注入 role / status / permissions 等敏感字段提权。
+     * 白名单来源：
+     *   1. extra_fields（业务字段）
+     *   2. primary_key / account_field / password_field（系统必需）
+     *   3. status_field / role_field / permissions_field（若配置存在）
+     *   4. created_at / updated_at（时间戳由本方法补齐）
      */
     public function create(array $data): int
     {
         $pf = $this->config['password_field'];
+        $af = $this->config['account_field'];
+
+        // 构造字段白名单
+        $allowed = array_merge(
+            $this->config['extra_fields'] ?? [],
+            [
+                $this->config['primary_key'],
+                $af,
+                $pf,
+                'created_at',
+                'updated_at',
+            ]
+        );
+        foreach (['status_field', 'role_field', 'permissions_field'] as $optKey) {
+            if (!empty($this->config[$optKey])) {
+                $allowed[] = $this->config[$optKey];
+            }
+        }
+        $allowed = array_values(array_unique(array_filter($allowed, function ($f) {
+            return is_string($f) && $f !== '';
+        })));
+
+        // 仅保留白名单内的字段，杜绝 role / status / permissions 等敏感字段透传
+        $data = array_intersect_key($data, array_flip($allowed));
+
         if (isset($data[$pf])) {
             $data[$pf] = self::hashPassword($data[$pf], $this->config['password_algo'] ?? 'password_hash');
         }
         if (!isset($data['created_at'])) {
             $data['created_at'] = date('Y-m-d H:i:s');
         }
-        if (empty($data[$this->config['account_field']])) {
-            throw new GuardException('账号字段不能为空：' . $this->config['account_field']);
+        if (empty($data[$af])) {
+            throw new GuardException('账号字段不能为空：' . $af);
         }
         return Db::table($this->config['table'])->insert($data);
     }
 
     /**
      * 更新用户
+     *
+     * BUG #22 修复：updated_at 不再无条件覆盖。
+     *   - 若 $data 中显式包含 'updated_at' 键，则使用调用方提供的值；
+     *   - 若未提供，则不写入该字段，由 MySQL ON UPDATE CURRENT_TIMESTAMP 自动维护，
+     *     从而避免密码重置、状态切换等"非意图"操作污染 updated_at。
      */
     public function update($id, array $data): int
     {
@@ -190,7 +233,9 @@ class Guard
         if (isset($data[$pf])) {
             $data[$pf] = self::hashPassword($data[$pf], $this->config['password_algo'] ?? 'password_hash');
         }
-        $data['updated_at'] = date('Y-m-d H:i:s');
+        if (!array_key_exists('updated_at', $data)) {
+            unset($data['updated_at']);
+        }
         return Db::table($this->config['table'])
             ->where($this->config['primary_key'], $id)
             ->update($data);

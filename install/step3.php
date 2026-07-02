@@ -4,6 +4,91 @@
  */
 require __DIR__ . '/_bootstrap.php';
 
+/**
+ * 将多语句 SQL 拆分为单条 SQL 的数组。
+ *  - 去除 /* ... *​/ 块注释
+ *  - 去除 -- 与 # 行注释（仅在字符串外生效）
+ *  - 按 ; 分隔（仅在字符串外生效，正确处理 ' " ` 字符串字面量与反斜杠转义）
+ *  - 去除空语句
+ */
+function splitSqlStatements(string $sql): array
+{
+    // 1. 去除 /* ... */ 块注释（非贪婪，跨行）
+    $sql = preg_replace('#/\*.*?\*/#s', '', $sql);
+
+    $statements = [];
+    $current    = '';
+    $len        = strlen($sql);
+    $inString   = false;
+    $stringChar = '';
+    $i          = 0;
+
+    while ($i < $len) {
+        $char = $sql[$i];
+
+        // 在字符串内部：等待结束引号；处理反斜杠转义
+        if ($inString) {
+            $current .= $char;
+            if ($char === '\\' && $i + 1 < $len) {
+                $current .= $sql[$i + 1];
+                $i += 2;
+                continue;
+            }
+            if ($char === $stringChar) {
+                $inString = false;
+            }
+            $i++;
+            continue;
+        }
+
+        // 进入字符串（单引号、双引号、反引号）
+        if ($char === "'" || $char === '"' || $char === '`') {
+            $inString   = true;
+            $stringChar = $char;
+            $current .= $char;
+            $i++;
+            continue;
+        }
+
+        // -- 行注释：跳到行尾
+        if ($char === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
+            while ($i < $len && $sql[$i] !== "\n") {
+                $i++;
+            }
+            continue;
+        }
+
+        // # 行注释（MySQL）：跳到行尾
+        if ($char === '#') {
+            while ($i < $len && $sql[$i] !== "\n") {
+                $i++;
+            }
+            continue;
+        }
+
+        // 语句结束
+        if ($char === ';') {
+            $stmt = trim($current);
+            if ($stmt !== '') {
+                $statements[] = $stmt;
+            }
+            $current = '';
+            $i++;
+            continue;
+        }
+
+        $current .= $char;
+        $i++;
+    }
+
+    $stmt = trim($current);
+    if ($stmt !== '') {
+        $statements[] = $stmt;
+    }
+
+    return $statements;
+}
+
 $db = installer('db');
 if (!$db) {
     header('Location: ' . installerUrl('step2.php'));
@@ -26,7 +111,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $db['host'], $db['port'], $db['database'], $db['charset']);
             $pdo = new PDO($dsn, $db['username'], $db['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
             $sql = file_get_contents(__DIR__ . '/schema/install.sql');
-            $pdo->exec($sql);
+            // BUG #1 修复：PDO::exec() 不会执行多条 SQL，需要按 ; 拆分后逐条执行。
+            $statements = splitSqlStatements($sql);
+            foreach ($statements as $stmt) {
+                $pdo->exec($stmt);
+            }
             installerSet('schema_imported', true);
             $imported = true;
             $msg = '已成功导入 users / admins / auth_logs 表';
