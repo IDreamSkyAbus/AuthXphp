@@ -74,7 +74,7 @@ adminRenderHeader('仪表盘', 'dashboard');
             <tr><th>运行模式</th><td><span class="layui-badge layui-bg-blue"><?= h(config('app.run_mode')) ?></span></td></tr>
             <tr><th>BASE_PATH</th><td><code><?= h(appBase()) ?: '/' ?></code></td></tr>
             <tr><th>PHP 版本</th><td><?= h(PHP_VERSION) ?></td></tr>
-            <tr><th>数据库</th><td><?= h(config('db.connections.mysql.host')) ?> / <?= h(config('db.connections.mysql.database')) ?></td></tr>
+            <tr><th>数据库</th><td><?= h(maskHost(config('db.connections.mysql.host'))) ?> / <?= h(maskDbName(config('db.connections.mysql.database'))) ?></td></tr>
             <tr><th>JWT 算法</th><td><?= h(config('jwt.algo')) ?></td></tr>
             <tr><th>Access TTL</th><td><?= (int)config('jwt.access_ttl') ?> 秒</td></tr>
             <tr><th>Token 黑名单</th><td><?= (config('jwt.blacklist.enabled') ? '已开启' : '未开启') ?> (<?= h(config('jwt.blacklist.driver')) ?>)</td></tr>
