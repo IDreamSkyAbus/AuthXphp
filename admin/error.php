@@ -8,6 +8,12 @@
 
 $code = (int)($_GET['code'] ?? 500);
 $msg  = trim((string)($_GET['msg'] ?? '发生错误'));
+// 限制长度，避免超长字符串破坏布局
+if (function_exists('mb_substr')) {
+    $msg = mb_substr($msg, 0, 200);
+} else {
+    $msg = substr($msg, 0, 200);
+}
 
 // 有效的 HTTP 状态码
 $validCodes = [400, 401, 403, 404, 405, 500];
