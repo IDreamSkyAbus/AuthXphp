@@ -67,15 +67,23 @@ adminRenderHeader('用户管理（Guard: ' . $curGuard . '）', 'users');
       </thead>
       <tbody>
         <?php
+        $pk = $g->config('primary_key');
+        $sf = $g->config('status_field');
+        $rf = $g->config('role_field');
+        $selectCols = array_values(array_unique(array_filter([
+            $pk,
+            $g->config('account_field'),
+            $rf,
+            $sf,
+            'last_login_at',
+            'created_at',
+        ])));
         $rows = Db::table($g->config('table'))
-            ->orderBy($g->config('primary_key'), 'DESC')
+            ->select(...$selectCols)
+            ->orderBy($pk, 'DESC')
             ->limit(100)
             ->get();
         foreach ($rows as $r):
-          $pk = $g->config('primary_key');
-          $sf = $g->config('status_field');
-          $rf = $g->config('role_field');
-          $laf = $g->config('extra_fields')[0] ?? 'username';
         ?>
         <tr>
           <td><?= h($r[$pk] ?? '') ?></td>
