@@ -258,8 +258,9 @@ class Route
         if (!is_array($data)) {
             $data = [];
         }
-        // JSON body 优先级最高：$_GET → $_POST → $data
-        return array_merge($_GET, $_POST, $data);
+        // JSON body 优先级最高：先放 $data，再被 $_POST / $_GET 覆盖会破坏这一保证。
+        // 因此顺序必须为 array_merge($data, $_POST, $_GET)，使 $data 在合并结果中胜出。
+        return array_merge($data, $_POST, $_GET);
     }
 
     /**
@@ -277,18 +278,112 @@ class Route
 
     /**
      * 客户端 IP
+     *
+     * 安全策略：
+     *  - 默认仅信任 REMOTE_ADDR（直接对端连接 IP）。
+     *  - 只有当 REMOTE_ADDR 命中 trusted_proxies 白名单（支持 IPv4 / IPv4 CIDR / 单 IP）时，
+     *    才解析 X-Forwarded-For / X-Real-IP / CF-Connecting-IP / Client-IP。
+     *  - 解析 X-Forwarded-For 时取最左边的非空 IP（最原始的客户端）。
+     *  - 配置：config('route.trusted_proxies', [])，例如 ['127.0.0.1', '10.0.0.0/8', '::1']
+     *  - 兼容 Nginx（real_ip_module）与 Cloudflare 反代场景。
      */
     public static function clientIp(): string
     {
-        $keys = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP', 'REMOTE_ADDR'];
-        foreach ($keys as $k) {
-            if (!empty($_SERVER[$k])) {
-                $ip = trim(explode(',', $_SERVER[$k])[0]);
-                if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                    return $ip;
+        $remote = $_SERVER['REMOTE_ADDR'] ?? '';
+        $trustedProxies = config('route.trusted_proxies', []);
+        if (!is_array($trustedProxies)) {
+            $trustedProxies = [];
+        }
+
+        $isTrusted = $remote !== '' && self::ipMatchesAny($remote, $trustedProxies);
+
+        if ($isTrusted) {
+            // 优先级：CF > XFF > XRI > Client-IP，取每条 header 的最左非空 IP
+            $headerKeys = [
+                'HTTP_CF_CONNECTING_IP', // Cloudflare
+                'HTTP_X_FORWARDED_FOR',  // 标准反代
+                'HTTP_X_REAL_IP',        // Nginx real_ip_module
+                'HTTP_CLIENT_IP',        // 罕见反代
+            ];
+            foreach ($headerKeys as $k) {
+                if (empty($_SERVER[$k])) {
+                    continue;
+                }
+                $parts = explode(',', (string)$_SERVER[$k]);
+                foreach ($parts as $p) {
+                    $candidate = trim($p);
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                        return $candidate;
+                    }
                 }
             }
         }
+
+        // 未配置白名单 / REMOTE_ADDR 不在白名单 / 无有效代理头：仅返回 REMOTE_ADDR
+        if ($remote !== '' && filter_var($remote, FILTER_VALIDATE_IP)) {
+            return $remote;
+        }
         return '0.0.0.0';
+    }
+
+    /**
+     * 判断 $ip 是否匹配白名单中的任一规则。
+     * 规则支持：单 IP（含 IPv6）与 CIDR。
+     */
+    private static function ipMatchesAny(string $ip, array $rules): bool
+    {
+        foreach ($rules as $rule) {
+            $rule = trim((string)$rule);
+            if ($rule === '') {
+                continue;
+            }
+            if (strpos($rule, '/') === false) {
+                if (filter_var($rule, FILTER_VALIDATE_IP) && $rule === $ip) {
+                    return true;
+                }
+                continue;
+            }
+            // CIDR
+            [$subnet, $mask] = explode('/', $rule, 2) + [null, null];
+            $subnet = trim((string)$subnet);
+            $bits = (int)$mask;
+            if ($subnet === '' || $bits < 0 || $bits > 128) {
+                continue;
+            }
+            if (!filter_var($subnet, FILTER_VALIDATE_IP) || !filter_var($ip, FILTER_VALIDATE_IP)) {
+                continue;
+            }
+            $ipBin     = @inet_pton($ip);
+            $subnetBin = @inet_pton($subnet);
+            if ($ipBin === false || $subnetBin === false) {
+                continue;
+            }
+            if (strlen($ipBin) !== strlen($subnetBin)) {
+                continue; // IPv4 vs IPv6 不匹配
+            }
+            $maxBits = strlen($ipBin) * 8;
+            if ($bits === 0) {
+                return true;
+            }
+            if ($bits > $maxBits) {
+                $bits = $maxBits;
+            }
+            $fullBytes = intdiv($bits, 8);
+            $remBits   = $bits % 8;
+            if ($fullBytes > 0 && substr($ipBin, 0, $fullBytes) !== substr($subnetBin, 0, $fullBytes)) {
+                continue;
+            }
+            if ($remBits === 0) {
+                return true;
+            }
+            $maskByte = chr((0xFF << (8 - $remBits)) & 0xFF);
+            if (($ipBin[$fullBytes] & $maskByte) === ($subnetBin[$fullBytes] & $maskByte)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
