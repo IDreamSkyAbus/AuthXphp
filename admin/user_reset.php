@@ -79,7 +79,7 @@ $_SESSION['authxphp_reset_pwd'] = [
     'guard'       => $curGuard,
     'username'    => $username,
     'new_password'=> $newPassword,
-    'expires_at'  => time() + 60, // 60 秒后失效
+    'expires_at'  => time() + 300, // 300 秒（5 分钟）后失效，平衡可用性与安全性
 ];
 
 header('Location: ' . adminUrl('users.php', ['guard' => $curGuard, 'show_reset' => 1]));
