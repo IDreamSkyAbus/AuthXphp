@@ -26,7 +26,7 @@ class Captcha
     {
         self::session();
         if (!function_exists('imagecreatetruecolor')) {
-            Response::serverError('GD 扩展未安装，无法使用图形验证码');
+            throw new \RuntimeException('GD extension required');
         }
         $chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
         $code  = '';
