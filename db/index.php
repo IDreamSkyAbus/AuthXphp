@@ -312,21 +312,4 @@ class Db
         $stmt->execute($bindings);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-
-    /**
-     * 事务包装
-     */
-    public static function transaction(callable $callback)
-    {
-        $pdo = self::connection();
-        $pdo->beginTransaction();
-        try {
-            $result = $callback($pdo);
-            $pdo->commit();
-            return $result;
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-    }
 }
