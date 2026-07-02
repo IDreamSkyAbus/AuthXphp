@@ -9,7 +9,6 @@
  *   - Cors      跨域 / 预检
  *   - AuthGuard 通用 API 鉴权
  *   - Rbac      角色 / 权限
- *   - RateLimit 频率限制
  *   - Install   未安装拦截
  */
 
@@ -176,14 +175,5 @@ class Middleware
         }
         $next();
     }
-
-    public static function mw_ratelimit(array $req, callable $next): void
-    {
-        $ip = Route::clientIp();
-        $ok = RateLimiter::hit('global:' . $ip, 600, 60);
-        if (!$ok) {
-            Response::rateLimited('请求过于频繁（全局限流）');
-        }
-        $next();
-    }
 }
+
