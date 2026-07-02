@@ -251,19 +251,41 @@ class Jwt
     private static function revokeFile(string $jti, int $ttl): void
     {
         $file = self::blacklistFile() . '/' . substr($jti, 0, 2) . '.json';
+
+        // 使用 LOCK_EX 包裹整个 read-modify-write 周期，
+        // 防止并发请求读到旧数据后互相覆盖导致吊销记录丢失。
+        $fp = fopen($file, 'c+');
+        if (!$fp) {
+            Log::warn('黑名单文件无法打开', ['file' => $file]);
+            return;
+        }
+        if (!flock($fp, LOCK_EX)) {
+            fclose($fp);
+            Log::warn('黑名单文件无法获取独占锁', ['file' => $file]);
+            return;
+        }
+
         $data = [];
-        if (is_file($file)) {
-            $data = (array)json_decode((string)file_get_contents($file), true);
+        $content = stream_get_contents($fp);
+        if ($content !== '' && $content !== false) {
+            $data = (array)json_decode($content, true);
         }
         $data[$jti] = time() + $ttl;
         // 清理过期
         $now = time();
         foreach ($data as $k => $exp) {
-            if ($exp < $now) {
+            if ((int)$exp < $now) {
                 unset($data[$k]);
             }
         }
-        @file_put_contents($file, json_encode($data), LOCK_EX);
+
+        // 清空文件并写入新内容
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($data));
+
+        flock($fp, LOCK_UN);
+        fclose($fp);
     }
 
     private static function isRevokedFile(string $jti): bool
@@ -272,9 +294,33 @@ class Jwt
         if (!is_file($file)) {
             return false;
         }
-        $data = (array)json_decode((string)file_get_contents($file), true);
-        $exp  = $data[$jti] ?? 0;
-        return $exp > 0 && $exp > time();
+
+        // 使用 LOCK_SH 共享锁读取，避免读到正在被 revoke 写一半的文件。
+        $fp = fopen($file, 'r');
+        if (!$fp) {
+            // 无法打开文件时降级到无锁读取（best-effort）
+            $data = (array)json_decode((string)@file_get_contents($file), true);
+            $exp  = $data[$jti] ?? 0;
+            return (int)$exp > 0 && (int)$exp > time();
+        }
+        if (!flock($fp, LOCK_SH)) {
+            fclose($fp);
+            $data = (array)json_decode((string)@file_get_contents($file), true);
+            $exp  = $data[$jti] ?? 0;
+            return (int)$exp > 0 && (int)$exp > time();
+        }
+
+        $content = stream_get_contents($fp);
+        $data    = [];
+        if ($content !== '' && $content !== false) {
+            $data = (array)json_decode($content, true);
+        }
+        $exp = $data[$jti] ?? 0;
+
+        flock($fp, LOCK_UN);
+        fclose($fp);
+
+        return (int)$exp > 0 && (int)$exp > time();
     }
 
     // ======================== Redis 黑名单实现（按需扩展） ========================
