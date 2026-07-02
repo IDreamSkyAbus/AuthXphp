@@ -1,9 +1,9 @@
-/* AuthXphp Admin 自定义脚本
- * 提供最小化的 layui 兼容层（仅实际用到的部分：tab 切换、导航菜单、弹窗）
+/* AuthXphp Admin 脚本
+ * 提供最小化的 layui 兼容层（实际用到的部分有：tab 切换、导航菜单、弹窗）
  */
 window.layui = window.layui || {};
 
-// 简易 Tab 切换
+// 简易 Tab
 document.addEventListener('click', function (e) {
   var title = e.target.closest('.layui-tab-title > li');
   if (!title) return;
